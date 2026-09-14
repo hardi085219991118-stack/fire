@@ -12,16 +12,21 @@ import com.example.data.engine.CurrentDataGate
 import com.example.data.engine.DataFreshnessEngine
 import com.example.data.engine.DataIntegrityReport
 import com.example.data.engine.DataIntegrityTracker
+import com.example.data.engine.DataSnapshot
+import com.example.data.engine.DataSnapshotEngine
 import com.example.data.engine.DataStallDetector
 import com.example.data.engine.FireAlertEngine
 import com.example.data.engine.FireNowEngine
 import com.example.data.engine.GeospatialIntelligenceEngine
 import com.example.data.engine.HotspotWithPriority
 import com.example.data.engine.LatestObservationEngine
+import com.example.data.engine.SmartAlertConfig
+import com.example.data.engine.SmartFireAlertEngine
 import com.example.data.local.FireDatabase
 import com.example.data.location.LocationHelper
 import com.example.data.model.DataAuditLog
 import com.example.data.model.DataQualityReport
+import com.example.data.model.FieldVerificationStatus
 import com.example.data.model.FireAlert
 import com.example.data.model.FireNowPriorityResult
 import com.example.data.model.FireNowPriorityScore
@@ -31,6 +36,8 @@ import com.example.data.model.HotspotAgeStatus
 import com.example.data.model.HotspotDensityInfo
 import com.example.data.model.HotspotEvent
 import com.example.data.model.HotspotGroup
+import com.example.data.model.IncidentEntity
+import com.example.data.model.IncidentStatus
 import com.example.data.model.MonitoringSession
 import com.example.data.model.RealTimeClaimGuard
 import com.example.data.model.SavedWatchArea
@@ -146,7 +153,16 @@ data class FireNowUiState(
     val showAlertHistoryDialog: Boolean = false,
     val showWatchAreasDialog: Boolean = false,
     val showPlaybackDialog: Boolean = false,
-    val showFieldDashboardDialog: Boolean = false
+    val showFieldDashboardDialog: Boolean = false,
+    // Tahap 4 States
+    val showFieldOperationDialog: Boolean = false,
+    val showMapIntelligenceDialog: Boolean = false,
+    val showIncidentDialog: Boolean = false,
+    val showReportExportDialog: Boolean = false,
+    val incidents: List<IncidentEntity> = emptyList(),
+    val previousSnapshot: DataSnapshot? = null,
+    val currentSnapshot: DataSnapshot? = null,
+    val smartAlertConfig: SmartAlertConfig = SmartAlertConfig()
 ) {
     /**
      * Feature 137: Map Center Hierarchy
@@ -203,6 +219,7 @@ class FireNowViewModel(application: Application) : AndroidViewModel(application)
     private val apiService = FireApiService()
     private val repository = FireRepository(apiService, database)
     private val alertEngine = FireAlertEngine(application)
+    private val smartAlertEngine = SmartFireAlertEngine(application)
     private val fireNowEngine = FireNowEngine(repository, alertEngine)
     private val locationHelper = LocationHelper(application)
 
@@ -241,6 +258,13 @@ class FireNowViewModel(application: Application) : AndroidViewModel(application)
             repository.observeHotspots(_uiState.value.userLocation).collect { list ->
                 _uiState.update { it.copy(allHotspots = list) }
                 recalculateState()
+            }
+        }
+
+        // Observe Incidents (Tahap 4)
+        viewModelScope.launch {
+            repository.observeIncidents().collect { list ->
+                _uiState.update { it.copy(incidents = list) }
             }
         }
 
@@ -358,9 +382,25 @@ class FireNowViewModel(application: Application) : AndroidViewModel(application)
                 } else s
             }
 
+            // Feature 329: DATA SNAPSHOT
+            val newSnapshot = DataSnapshotEngine.createSnapshot(
+                hotspots = engineResult.allValidatedHotspots,
+                source = state.selectedSource,
+                latestObservationTimestamp = engineResult.latestObservationTimestamp,
+                freshnessMinutes = engineResult.newestDataAgeMinutes
+            )
+
+            // Feature 291: SMART ALERT EVALUATION
+            smartAlertEngine.evaluateAndGenerateAlerts(
+                newHotspots = engineResult.allValidatedHotspots,
+                config = state.smartAlertConfig
+            )
+
             _uiState.update { current ->
                 current.copy(
                     isLoading = false,
+                    previousSnapshot = current.currentSnapshot,
+                    currentSnapshot = newSnapshot,
                     allHotspots = engineResult.allValidatedHotspots,
                     filteredHotspots = engineResult.filteredHotspots,
                     priorityRankedHotspots = engineResult.priorityRankedHotspots,
@@ -666,6 +706,78 @@ class FireNowViewModel(application: Application) : AndroidViewModel(application)
 
     fun setShowFieldDashboardDialog(show: Boolean) {
         _uiState.update { it.copy(showFieldDashboardDialog = show) }
+    }
+
+    // Tahap 4 Dialog Handlers
+    fun setShowFieldOperationDialog(show: Boolean) {
+        _uiState.update { it.copy(showFieldOperationDialog = show) }
+    }
+
+    fun setShowMapIntelligenceDialog(show: Boolean) {
+        _uiState.update { it.copy(showMapIntelligenceDialog = show) }
+    }
+
+    fun setShowIncidentDialog(show: Boolean) {
+        _uiState.update { it.copy(showIncidentDialog = show) }
+    }
+
+    fun setShowReportExportDialog(show: Boolean) {
+        _uiState.update { it.copy(showReportExportDialog = show) }
+    }
+
+    // Incident Handlers (Tahap 4)
+    fun createIncident(
+        title: String,
+        lat: Double,
+        lon: Double,
+        linkedFp: String?,
+        satTime: Long?,
+        satName: String?
+    ) {
+        viewModelScope.launch {
+            val incident = IncidentEntity(
+                id = "INC_${System.currentTimeMillis()}",
+                title = title,
+                status = IncidentStatus.OPEN,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                latitude = lat,
+                longitude = lon,
+                linkedHotspotFingerprint = linkedFp,
+                satelliteObservationTimestamp = satTime,
+                satelliteName = satName,
+                fieldVerificationStatus = FieldVerificationStatus.BELUM_DIVERIFIKASI
+            )
+            repository.saveIncident(incident)
+        }
+    }
+
+    fun updateIncidentVerification(
+        id: String,
+        status: FieldVerificationStatus,
+        notes: String,
+        observer: String
+    ) {
+        viewModelScope.launch {
+            val existing = _uiState.value.incidents.find { it.id == id }
+            if (existing != null) {
+                val updated = existing.copy(
+                    fieldVerificationStatus = status,
+                    fieldNotes = notes,
+                    fieldObserverName = observer,
+                    fieldObservationTimestamp = System.currentTimeMillis(),
+                    status = if (status == FieldVerificationStatus.DIVERIFIKASI_LAPANGAN) IncidentStatus.FIELD_VERIFIED else existing.status,
+                    updatedAt = System.currentTimeMillis()
+                )
+                repository.updateIncident(updated)
+            }
+        }
+    }
+
+    fun deleteIncident(id: String) {
+        viewModelScope.launch {
+            repository.deleteIncident(id)
+        }
     }
 
     private fun recalculateState() {

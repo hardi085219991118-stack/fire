@@ -4,16 +4,18 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.example.data.model.IncidentEntity
 
 @Database(
-    entities = [HotspotEntity::class, AuditLogEntity::class],
-    version = 1,
+    entities = [HotspotEntity::class, AuditLogEntity::class, IncidentEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class FireDatabase : RoomDatabase() {
 
     abstract fun hotspotDao(): HotspotDao
     abstract fun auditLogDao(): AuditLogDao
+    abstract fun incidentDao(): IncidentDao
 
     companion object {
         @Volatile
@@ -25,7 +27,7 @@ abstract class FireDatabase : RoomDatabase() {
                     context.applicationContext,
                     FireDatabase::class.java,
                     "hardi_mantangai_fire.db"
-                ).fallbackToDestructiveMigration(false).build()
+                ).fallbackToDestructiveMigration(true).build()
                 INSTANCE = instance
                 instance
             }

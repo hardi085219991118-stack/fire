@@ -137,6 +137,7 @@ fun AlertHistoryDialog(
 @Composable
 fun AlertCardItem(alert: FireAlert) {
     val severityColor = when (alert.severity) {
+        AlertSeverity.CRITICAL -> Color(0xFFB71C1C)
         AlertSeverity.HIGH -> Color(0xFFD32F2F)
         AlertSeverity.MEDIUM -> Color(0xFFE65100)
         AlertSeverity.LOW -> Color(0xFFF57C00)

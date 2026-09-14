@@ -77,16 +77,20 @@ import com.example.data.repository.FireAgeCalculator
 import com.example.ui.AgeFilter
 import com.example.ui.FireNowUiState
 import com.example.ui.FireNowViewModel
+import com.example.ui.components.AdvancedMapIntelligenceDialog
 import com.example.ui.components.AlertHistoryDialog
 import com.example.ui.components.DataAuditDialog
 import com.example.ui.components.DataIntegrityDialog
 import com.example.ui.components.FieldDashboardDialog
+import com.example.ui.components.FieldOperationDialog
 import com.example.ui.components.HealthCheckDialog
 import com.example.ui.components.HotspotDetailDialog
+import com.example.ui.components.IncidentManagementDialog
 import com.example.ui.components.InteractiveTileMap
 import com.example.ui.components.LatestDataCard
 import com.example.ui.components.MonitoringStatusCard
 import com.example.ui.components.ObservationPlaybackDialog
+import com.example.ui.components.ReportExportDialog
 import com.example.ui.components.SearchLocationDialog
 import com.example.ui.components.SettingsDialog
 import com.example.ui.components.TimeComparisonCard
@@ -376,6 +380,56 @@ fun FireNowScreen(viewModel: FireNowViewModel) {
                 }
             }
 
+            // 4d. Tahap 4 Action Bar (Mode Lapangan, Kecerdasan Peta, Incident, Laporan)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Feature 261: Mode Operasi Lapangan (High Outdoor Contrast)
+                    Button(
+                        onClick = { viewModel.setShowFieldOperationDialog(true) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5722)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("open_field_mode_btn")
+                    ) {
+                        Text("🔥 MODE OPERASI LAPANGAN", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Feature 275: Kecerdasan Peta & Heatmap
+                    OutlinedButton(
+                        onClick = { viewModel.setShowMapIntelligenceDialog(true) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("open_map_intelligence_btn")
+                    ) {
+                        Text("🌐 HEATMAP & TREN TEMPORAL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Feature 301: Manajemen Catatan Incident & Verifikasi
+                    OutlinedButton(
+                        onClick = { viewModel.setShowIncidentDialog(true) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFB74D)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("open_incident_dialog_btn")
+                    ) {
+                        Text("📋 INCIDENT & VERIFIKASI (${uiState.incidents.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Feature 319: Laporan Pemantauan & Export Data
+                    OutlinedButton(
+                        onClick = { viewModel.setShowReportExportDialog(true) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00E676)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("open_report_export_btn")
+                    ) {
+                        Text("📄 LAPORAN & AUDIT DATA", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             // 5. Proximity Alert Banner if fire within 5km
             item {
                 ProximityAlertSection(
@@ -661,6 +715,63 @@ fun FireNowScreen(viewModel: FireNowViewModel) {
             allHotspots = uiState.allHotspots,
             selectedHotspot = uiState.selectedHotspot,
             onDismiss = { viewModel.setShowPlaybackDialog(false) }
+        )
+    }
+
+    // Tahap 4: Mode Operasi Lapangan Dialog
+    if (uiState.showFieldOperationDialog) {
+        FieldOperationDialog(
+            userLocation = uiState.userLocation,
+            allHotspots = uiState.allHotspots,
+            newestDataAgeMinutes = uiState.newestDataAgeMinutes,
+            newestDataStatus = uiState.newestDataStatus,
+            onDismiss = { viewModel.setShowFieldOperationDialog(false) }
+        )
+    }
+
+    // Tahap 4: Advanced Map Intelligence Dialog
+    if (uiState.showMapIntelligenceDialog) {
+        AdvancedMapIntelligenceDialog(
+            allHotspots = uiState.allHotspots,
+            dataReceivedTimestamp = uiState.lastReceivedTime,
+            onDismiss = { viewModel.setShowMapIntelligenceDialog(false) }
+        )
+    }
+
+    // Tahap 4: Incident Management & Field Verification Dialog
+    if (uiState.showIncidentDialog) {
+        IncidentManagementDialog(
+            incidents = uiState.incidents,
+            selectedHotspot = uiState.selectedHotspot,
+            currentCenterLat = uiState.effectiveCenterLatitude,
+            currentCenterLon = uiState.effectiveCenterLongitude,
+            onCreateIncident = { title, lat, lon, fp, satTime, satName ->
+                viewModel.createIncident(title, lat, lon, fp, satTime, satName)
+            },
+            onUpdateVerification = { id, status, notes, observer ->
+                viewModel.updateIncidentVerification(id, status, notes, observer)
+            },
+            onDeleteIncident = { id ->
+                viewModel.deleteIncident(id)
+            },
+            onDismiss = { viewModel.setShowIncidentDialog(false) }
+        )
+    }
+
+    // Tahap 4: Report Generation & Export Dialog
+    if (uiState.showReportExportDialog) {
+        ReportExportDialog(
+            areaLabel = uiState.effectiveCenterLabel,
+            allHotspots = uiState.allHotspots,
+            latestObservationTimestamp = uiState.latestObservationTime,
+            lastReceivedTimestamp = uiState.lastReceivedTime,
+            latencyFormatted = uiState.deliveryLatencyFormatted,
+            alerts = uiState.alertHistory,
+            incidents = uiState.incidents,
+            auditLogs = uiState.auditLogs,
+            previousSnapshot = uiState.previousSnapshot,
+            currentSnapshot = uiState.currentSnapshot,
+            onDismiss = { viewModel.setShowReportExportDialog(false) }
         )
     }
 }

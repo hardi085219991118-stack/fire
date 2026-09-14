@@ -5,12 +5,14 @@ import com.example.data.api.FireApiService
 import com.example.data.api.HealthCheckReport
 import com.example.data.api.NasaFirmsParser
 import com.example.data.engine.ClockSyncEngine
+import com.example.data.engine.ErrorObservability
 import com.example.data.engine.FireDuplicateDetector
 import com.example.data.local.AuditLogEntity
 import com.example.data.local.FireDatabase
 import com.example.data.local.HotspotEntity
 import com.example.data.model.DataAuditLog
 import com.example.data.model.Hotspot
+import com.example.data.model.IncidentEntity
 import com.example.data.model.UserLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -42,6 +44,24 @@ class FireRepository(
 ) {
     private val hotspotDao = database.hotspotDao()
     private val auditDao = database.auditLogDao()
+    private val incidentDao = database.incidentDao()
+
+    fun observeIncidents(): Flow<List<IncidentEntity>> = incidentDao.observeAllIncidents()
+
+    suspend fun saveIncident(incident: IncidentEntity) = withContext(Dispatchers.IO) {
+        incidentDao.insertIncident(incident)
+    }
+
+    suspend fun updateIncident(incident: IncidentEntity) = withContext(Dispatchers.IO) {
+        incidentDao.updateIncident(incident)
+    }
+
+    suspend fun deleteIncident(id: String) = withContext(Dispatchers.IO) {
+        val existing = incidentDao.getIncidentById(id)
+        if (existing != null) {
+            incidentDao.deleteIncident(existing)
+        }
+    }
 
     suspend fun testDataSource(
         mapKey: String?,
@@ -198,6 +218,14 @@ class FireRepository(
             }
 
             is ApiResponse.Error -> {
+                // Record to Structured Error Observability
+                ErrorObservability.recordError(
+                    component = "NASA FIRMS ($source)",
+                    errorType = if (apiResponse.httpStatusCode == 429) "RATE_LIMITED" else "FETCH_FAILED",
+                    httpStatus = apiResponse.httpStatusCode,
+                    rawMessage = apiResponse.errorMessage ?: "Unknown error"
+                )
+
                 // Log kegagalan ke database audit
                 val auditLog = AuditLogEntity(
                     requestTime = apiResponse.requestTime,

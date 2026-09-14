@@ -144,7 +144,8 @@ enum class AlertSeverity(val label: String) {
     INFO("INFORMASI"),
     LOW("PRIORITAS RENDAH"),
     MEDIUM("PRIORITAS SEDANG"),
-    HIGH("PRIORITAS TINGGI")
+    HIGH("PRIORITAS TINGGI"),
+    CRITICAL("PRIORITAS KRITIS")
 }
 
 /**
