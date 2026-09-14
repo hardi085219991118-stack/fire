@@ -1,0 +1,6 @@
+{
+  "name": "HARDI MANTANGAI FIRE NOW",
+  "description": "Sistem Pemantauan Hotspot Satelit Nyata 100% Terbaru - NASA FIRMS VIIRS & MODIS dengan pelacakan umur data dan latensi riil",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
